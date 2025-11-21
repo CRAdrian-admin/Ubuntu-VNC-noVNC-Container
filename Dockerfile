@@ -1,48 +1,38 @@
-FROM ubuntu:latest
+# Use the base Webtop image from LinuxServer.io
+FROM lscr.io/linuxserver/webtop:ubuntu-xfce
 
-LABEL maintainer="mahdisardari80@outlook.com"
+# Set environment variables for non-interactive installations to prevent prompts during apt operations
+ENV DEBIAN_FRONTEND=noninteractive
 
-WORKDIR /root
+# Enable 32-bit architecture for multi-arch support
+# This is crucial for installing 32-bit Wine components and dependencies.
+RUN dpkg --add-architecture i386
 
-RUN sed -i 's/http:\/\/[a-zA-Z0-9]*\.[a-zA-Z0-9]*.*\.com/http:\/\/ir.ubuntu.sindad.cloud/g' /etc/apt/sources.list.d/ubuntu.sources && \
-    apt update && \
-    apt install -y \
-        iputils-ping \
-        iproute2 \
-        net-tools \
-        vim \
-        expect \
-        tigervnc-standalone-server && \ 
-    #Install noVNC which is a VNC Client tool to connect to VNC server via Web Browser.    
-    apt install novnc python3-websockify python3-numpy -y && \    
-    apt install xubuntu-desktop task-xfce-desktop -y && \
-    apt install -y wine64 && \
-    dpkg --add-architecture i386 && \
-    apt update && \
-    apt install -y wine32:i386 && \
-    rm -rf /var/lib/apt/lists/*
+# --- Start: Mirror Configuration ---
+# Remove the existing sed command as it's causing an error and can be problematic with ubuntu.sources
+# Instead, create a new sources list file with your desired mirror.
+RUN rm -f /etc/apt/sources.list.d/ubuntu.sources && \
+    echo "deb http://ir.ubuntu.sindad.cloud/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb http://ir.ubuntu.sindad.cloud/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb http://ir.ubuntu.sindad.cloud/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb http://ir.ubuntu.sindad.cloud/ubuntu/ jammy-security main restricted universe multiverse" >> /etc/apt/sources.list
+# You might also want to add source deb lines if needed:
+# echo "deb-src http://ir.ubuntu.sindad.cloud/ubuntu/ jammy main restricted universe multiverse" >> /etc/apt/sources.list
+# --- End: Mirror Configuration ---
 
-RUN useradd -m -s /bin/bash -c "Mahdi Sardari" Mahdi && \
-    echo "Mahdi:1234" | chpasswd && \
-    usermod -aG root Mahdi && \
-    usermod -aG sudo Mahdi
+# Add WineHQ repository key
+# This downloads the GPG key for the WineHQ repository and adds it to the trusted keys.
+RUN wget -qO - https://dl.winehq.org/wine-builds/winehq.key | apt-key add -
 
-COPY . .
+# Add Google Chrome repository key (to fix the GPG error if the repo is present)
+# This downloads Google's public signing key and adds it to the trusted keys.
+# This is specifically to address the "NO_PUBKEY 32EE5355A6BC6E42" error for dl.google.com.
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add -
 
-RUN chmod +x entrypoint.exp && \
-    chmod +x entrypoint-2.exp && \
-    chmod +x up-container.sh && \
-    mv /root/entrypoint.exp /home/Mahdi && \
-    mv /root/entrypoint-2.exp /home/Mahdi && \
-    mv /root/up-container.sh /home/Mahdi && \
-    mv /root/idman642build23.exe /home/Mahdi
+# Add WineHQ repository for Ubuntu 22.04 (Jammy Jellyfish)
+# Ensure 'jammy' matches the Ubuntu version of your base image.
+# The repository supports both amd64 and i386 architectures.
+RUN apt-add-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ jammy main'
 
-USER Mahdi
-
-WORKDIR /home/Mahdi
-
-RUN wine winecfg
-
-EXPOSE 5901 5902 5903 5904 6080
-
-ENTRYPOINT ["/home/Mahdi/up-container.sh"]
+# Update package lists after enabling multi-arch and adding all new repositories
+RUN apt update
